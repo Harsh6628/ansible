@@ -1,0 +1,44 @@
+---
+- hosts: localhost
+  become: yes
+  tasks:
+    - name: Install dependencies
+      apt:
+        name:
+          - unzip
+          - wget
+        state: present
+        update_cache: yes
+
+    - name: Download PocketBase
+      get_url:
+        url: https://github.com/pocketbase/pocketbase/releases/download/v0.26.2/pocketbase_0.26.2_linux_amd64.zip
+        dest: /opt/pb/pocketbase.zip
+
+    - name: Unzip PocketBase
+      unarchive:
+        src: /opt/pb/pocketbase.zip
+        dest: /opt/pb/
+        remote_src: yes
+
+    - name: Run PocketBase as a systemd service
+      copy:
+        dest: /etc/systemd/system/pocketbase.service
+        content: |
+          [Unit]
+          Description=PocketBase Service
+          After=network.target
+
+          [Service]
+          ExecStart=/opt/pb/pocketbase serve --http=0.0.0.0:8090
+          Restart=always
+          User=root
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Enable and start PocketBase service
+      systemd:
+        name: pocketbase
+        enabled: yes
+        state: started
