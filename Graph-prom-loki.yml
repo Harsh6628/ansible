@@ -1,0 +1,181 @@
+---
+- hosts: localhost
+  become: yes
+  tasks:
+    - name: Install dependencies
+      apt:
+        name:
+          - unzip
+          - wget
+          - curl
+        state: present
+        update_cache: yes
+
+    # Install and configure Loki
+    - name: Ensure /opt/loki directory and subdirectories exist
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - /opt/loki
+        - /opt/loki/index
+        - /opt/loki/cache
+        - /opt/loki/chunks
+
+    - name: Download Loki
+      get_url:
+        url: https://github.com/grafana/loki/releases/download/v3.4.2/loki-linux-amd64.zip
+        dest: /opt/loki/loki.zip
+
+    - name: Unzip Loki
+      unarchive:
+        src: /opt/loki/loki.zip
+        dest: /opt/loki/
+        remote_src: yes
+
+    - name: Make Loki executable
+      file:
+        path: /opt/loki/loki-linux-amd64
+        mode: '0755'
+
+    - name: Create Loki config file
+      copy:
+        dest: /opt/loki/loki-config.yml
+        content: |
+          auth_enabled: false
+
+          server:
+            http_listen_port: 3100
+
+          ingester:
+            lifecycler:
+              address: 127.0.0.1
+              ring:
+                kvstore:
+                  store: inmemory
+                replication_factor: 1
+              final_sleep: 0s
+            chunk_idle_period: 5m
+            chunk_retain_period: 30s
+
+          common:
+            path_prefix: /opt/loki  # ✅ Fixes compactor directory issue
+
+          schema_config:
+            configs:
+              - from: 2025-03-25
+                store: tsdb
+                object_store: filesystem
+                schema: v13
+                index:
+                  prefix: index_
+                  period: 24h
+
+          storage_config:
+            tsdb_shipper:
+              active_index_directory: /opt/loki/index
+              cache_location: /opt/loki/cache
+            filesystem:
+              directory: /opt/loki/chunks
+
+          compactor:
+            working_directory: /opt/loki/compactor  # ✅ Fixes compactor directory issue
+
+    - name: Create Loki service
+      copy:
+        dest: /etc/systemd/system/loki.service
+        content: |
+          [Unit]
+          Description=Loki Service
+          After=network.target
+
+          [Service]
+          ExecStart=/opt/loki/loki-linux-amd64 -config.file=/opt/loki/loki-config.yml
+          Restart=always
+          User=root
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Enable and start Loki service
+      systemd:
+        name: loki
+        enabled: yes
+        state: started
+
+    # Install and configure Prometheus
+    - name: Ensure /opt/prometheus directory exists
+      file:
+        path: /opt/prometheus
+        state: directory
+        mode: '0755'
+
+    - name: Download Prometheus
+      get_url:
+        url: https://github.com/prometheus/prometheus/releases/download/v3.2.1/prometheus-3.2.1.linux-amd64.tar.gz
+        dest: /opt/prometheus/prometheus.tar.gz
+
+    - name: Extract Prometheus
+      unarchive:
+        src: /opt/prometheus/prometheus.tar.gz
+        dest: /opt/prometheus/
+        remote_src: yes
+        extra_opts:
+          - --strip-components=1
+
+    - name: Create Prometheus config file
+      copy:
+        dest: /opt/prometheus/prometheus.yml
+        content: |
+          global:
+            scrape_interval: 15s
+          scrape_configs:
+            - job_name: 'prometheus'
+              static_configs:
+                - targets: ['localhost:9090']
+            - job_name: 'loki'
+              static_configs:
+                - targets: ['localhost:3100']
+
+    - name: Create Prometheus service
+      copy:
+        dest: /etc/systemd/system/prometheus.service
+        content: |
+          [Unit]
+          Description=Prometheus Service
+          After=network.target
+
+          [Service]
+          ExecStart=/opt/prometheus/prometheus --config.file=/opt/prometheus/prometheus.yml
+          Restart=always
+          User=root
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Enable and start Prometheus service
+      systemd:
+        name: prometheus
+        enabled: yes
+        state: started
+
+    # Install and configure Grafana
+    - name: Add Grafana APT repository
+      shell: |
+        echo "deb https://packages.grafana.com/oss/deb stable main" | tee -a /etc/apt/sources.list.d/grafana.list
+        wget -q -O - https://packages.grafana.com/gpg.key | apt-key add -
+      args:
+        executable: /bin/bash
+
+    - name: Install Grafana
+      apt:
+        name: grafana
+        state: present
+        update_cache: yes
+
+    - name: Start and enable Grafana service
+      systemd:
+        name: grafana-server
+        enabled: yes
+        state: started
