@@ -36,7 +36,7 @@
           After=network.target
 
           [Service]
-          ExecStart=/opt/pb/pocketbase serve --http=0.0.0.0:8090 >> /opt/pb/pb.log 2>&1
+          ExecStart=/opt/pb/pocketbase serve --http=0.0.0.0:8090 --metrics
           Restart=always
           User=root
 
