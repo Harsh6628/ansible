@@ -120,7 +120,7 @@
           - --strip-components=1
 
     - name: Move Node Exporter binary
-      shell: mv /opt/node_exporter-1.7.0.linux-amd64/node_exporter /usr/local/bin/
+      shell: mv /opt/node_exporter /usr/local/bin/
       args:
         creates: /usr/local/bin/node_exporter
 
