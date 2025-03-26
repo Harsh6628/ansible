@@ -39,6 +39,8 @@
           ExecStart=/opt/pb/pocketbase serve --http=0.0.0.0:8090 --dev
           Restart=always
           User=root
+          StandardOutput=file:/var/log/pocketbase.log
+          StandardError=file:/var/log/pocketbase.error.log
 
           [Install]
           WantedBy=multi-user.target
