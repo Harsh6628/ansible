@@ -180,6 +180,9 @@
             - job_name: 'loki'
               static_configs:
                 - targets: ['localhost:3100']
+            - job_name: 'pocketbase'
+              static_configs:
+                - targets: ['localhost:9100']
 
     - name: Create Prometheus service
       copy:
